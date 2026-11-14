@@ -1,0 +1,48 @@
+# The currents for the 302 Waterways Currents layer: NOAA's forecast systems → tiles, published to
+# GitHub Pages (https://fartherr97.github.io/302-waterways-currents/). Four times a day, a little
+# after each model run is out; or by hand: Actions → "Currents" → Run workflow.
+# No secrets: the data is public and the site is this repository's own Pages.
+name: Currents
+
+on:
+  schedule:
+    - cron: '40 2,8,14,20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# (one at a time; a run that starts while one is going waits for it)
+concurrency:
+  group: currents
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install numpy scipy h5py
+      - name: Test
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Build the tiles
+        run: |
+          python3 scripts/build.py --out site --workers 4
+          cp index.html README.md site/
+          du -sh site
+      - uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: site
+      - name: Publish
+        id: deployment
+        uses: actions/deploy-pages@v5.0.1
