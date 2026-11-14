@@ -38,6 +38,27 @@ Each tile is an RGBA PNG, rows north → south, the same as the app's wind tiles
   the field out where a model stops in open water
 - A: 255 where a model has water, 0 on land and outside every model
 
+## Inlet conditions
+
+`inlets.json`, for the app's inlet conditions (how rough it is going through each ocean inlet,
+hour by hour): small, no tiles, made by `scripts/inlets.py` in the same run.
+
+- For each inlet in `scripts/inlets.json` (the same list as the app's `src/data/inlets.json`):
+  - the waves offshore of it, hourly from 3 hours ago to 48 hours ahead, from NOAA's GFS-Wave
+    (WAVEWATCH III) Atlantic 0.16° grid on AWS Open Data (bucket `noaa-gfs-bdp-pds`): the
+    combined height, the peak period and direction, the wind sea and the two biggest swells
+    (height, period and direction each), and the model's wind. Read by byte range, each field
+    where the file's `.idx` says it is; the JPEG 2000 packing is decoded by Pillow (`grib2.py`).
+  - its tide station's highs and lows (NOAA CO-OPS predictions, MLLW), and its current station's
+    slacks and strongest flood and ebb where it has one.
+  - the nearest wave buoy's last day (NDBC realtime2, the newest rows only, by byte range): NDBC
+    sends no CORS headers, so the app can't ask it itself.
+- The app works out the waves on the bar, the rating and its words (`src/lib/inlets`).
+- The format is at the top of `scripts/inlets.py`. Its workflow step may fail without stopping
+  the currents.
+
+    python3 scripts/inlets.py --out site
+
 ## How it's made
 
 `scripts/build.py`, run by `.github/workflows/currents.yml`. Only the surface layer of u and v is
@@ -46,7 +67,7 @@ grids (ROMS) are turned from grid-relative to east/north with their `angle`; eve
 (curvilinear or the unstructured FVCOM meshes) is laid on a plain latitude/longitude grid through
 a triangle mesh, with land masked. Where models overlap, the more local one is laid over the other.
 
-    pip install numpy scipy h5py
+    pip install numpy scipy h5py pillow
     python3 -m unittest discover -s scripts -p 'test_*.py'
     python3 scripts/build.py --out site --workers 4
 
