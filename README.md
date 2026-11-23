@@ -73,3 +73,30 @@ a triangle mesh, with land masked. Where models overlap, the more local one is l
 
 The same scripts are in the app repository under `scripts/currents`. The app uses this site as
 its default currents address (`VITE_CURRENTS_URL` overrides it).
+
+## Water temperature
+
+`watertemp/`, for the app's Water Temp layer: made by `scripts/watertemp.py` in the same run, its
+own step (trouble with it never holds up the currents).
+
+- The satellite surface temperature: MUR SST (GHRSST Level 4 from NASA JPL: 0.01°, about 1 km,
+  daily, the gaps under clouds filled by the analysis), the newest day (about a day behind), from
+  NOAA CoastWatch's ERDDAP (dataset `jplMURSST41`), public domain. It covers the ocean, the sounds,
+  the bays and the big lakes; its land mask leaves out the narrowest back bays and small lakes.
+- The latest water temperature at every buoy and shore station that measures it (NDBC buoys,
+  C-MAN and NOS stations), from NDBC's `latest_obs.txt`, names from `activestations.xml`: readings
+  from the last 6 hours.
+
+Files:
+
+- `manifest.json`: the satellite's day, the coding (`t0`, `step`), the tile size and resolution,
+  the tiles there are, the overview's place and size.
+- `t<x>_<y>.png`: 4° squares at 0.01° (400 × 400), x counting from 98°W and y from 23°N, only those
+  with water. `o.png`: the whole area (98°W–66°W, 23°N–51°N) at 0.05°.
+- `stations.json`: `{ fields: [id, name, lat, lng, c, t], rows }` (°C, the reading's time in ms).
+
+Each tile is a grey + alpha PNG, rows north → south: pixel (col, row) is the temperature at
+lon = west + col × res, lat = north − row × res (the satellite's own grid points), as
+grey = (°C − t0) / step (−2 °C to 36.25 °C in 0.15° steps); alpha 255 on water, 0 where there is none.
+
+    python3 scripts/watertemp.py --out site

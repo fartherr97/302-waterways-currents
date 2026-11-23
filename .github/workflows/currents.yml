@@ -46,6 +46,13 @@ jobs:
         continue-on-error: true
         timeout-minutes: 6
         run: python3 scripts/inlets.py --out site
+      # The water temperature (watertemp/: the satellite's daily surface temperature as tiles, and
+      # every buoy's and shore station's latest reading), for the app's Water Temp layer. Its own
+      # step too: trouble with it never holds up the currents.
+      - name: Water temperature
+        continue-on-error: true
+        timeout-minutes: 8
+        run: python3 scripts/watertemp.py --out site
       - uses: actions/upload-pages-artifact@v5.0.0
         with:
           path: site
