@@ -85,8 +85,9 @@ def png_la(grey, alpha):
     return b'\x89PNG\r\n\x1a\n' + _chunk(b'IHDR', ihdr) + _chunk(b'IDAT', zlib.compress(raw, 9)) + _chunk(b'IEND', b'')
 
 
-def griddap_url(base, lat0, lat1, lon0, lon1, stride=1):
-    q = f'analysed_sst[(last)][({lat0:.2f}):{stride}:({lat1:.2f})][({lon0:.2f}):{stride}:({lon1:.2f})]'
+def griddap_url(base, lat0, lat1, lon0, lon1, stride=1, when='last'):
+    """when: 'last' (the newest day) or that day's time, '2026-11-22T09:00:00Z'"""
+    q = f'analysed_sst[({when})][({lat0:.2f}):{stride}:({lat1:.2f})][({lon0:.2f}):{stride}:({lon1:.2f})]'
     return f'{base}/griddap/{DATASET}.nc?' + urllib.parse.quote(q, safe='():,')
 
 
@@ -120,11 +121,11 @@ def fetch(url, timeout=120):
         return r.read()
 
 
-def fetch_grid(lat0, lat1, lon0, lon1, stride=1):
+def fetch_grid(lat0, lat1, lon0, lon1, stride=1, when='last'):
     err = None
     for base in ERDDAPS:
         try:
-            return read_grid(fetch(griddap_url(base, lat0, lat1, lon0, lon1, stride)))
+            return read_grid(fetch(griddap_url(base, lat0, lat1, lon0, lon1, stride, when)))
         except Exception as e:   # the next server
             err = e
     raise err
@@ -255,6 +256,9 @@ def main(argv=None):
     # the overview, and from it the tiles with water
     stride = round(OV_RES / RES)
     lat, lon, v, day = fetch_grid(SOUTH, NORTH, WEST, EAST, stride)
+    # the tiles from the overview's day, by its time (asked for as "the newest", a day that came
+    # in during the run would put some tiles a day ahead of the manifest's)
+    when = dt.datetime.fromtimestamp(day / 1000, dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     ov = north_first(lat, v, len(lat))
     with open(os.path.join(out, 'o.png'), 'wb') as fh:
         fh.write(png_la(*encode(ov)))
@@ -268,7 +272,9 @@ def main(argv=None):
     def one(xy):
         x, y = xy
         lat0, lat1, lon0, lon1 = tile_box(x, y)
-        la, lo, vv, _ = fetch_grid(lat0, lat1, lon0, lon1)
+        la, lo, vv, d = fetch_grid(lat0, lat1, lon0, lon1, when=when)
+        if d != day:
+            raise ValueError(f'a tile from another day ({d}, not {day})')
         grid = north_first(la, vv, N_T)
         if grid.shape[1] < N_T:
             grid = np.hstack([grid, np.full((N_T, N_T - grid.shape[1]), np.nan)])

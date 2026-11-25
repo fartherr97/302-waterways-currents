@@ -155,7 +155,10 @@ class Whole(unittest.TestCase):
         def sea(la, lo):   # water east of 75.5°W and south of 40°N, 12–20 °C by latitude
             return np.where((lo[None, :] > -75.5) & (la[:, None] < 40), 20 - (la[:, None] - 36) * 2, np.nan)
 
+        asked = []
+
         def fake(url, timeout=120):
+            asked.append(urllib.parse.unquote(url))
             if 'latest_obs' in url:
                 return Stations.TEXT.encode()
             if 'activestations' in url:
@@ -177,6 +180,10 @@ class Whole(unittest.TestCase):
                 self.assertEqual(m['tiles'], sorted(f't{x}_{y}' for x in (5, 6, 7) for y in range(5)))
                 self.assertEqual((m['o']['w'], m['o']['h']), (641, 561))
                 self.assertEqual(m['stations'], 2)
+                # the overview asked for the newest day; every tile for that same day, by its time
+                grids = [u for u in asked if 'griddap' in u]
+                self.assertIn('analysed_sst[(last)]', grids[0])
+                self.assertTrue(all('analysed_sst[(2026-11-22T09:00:00Z)]' in u for u in grids[1:]), grids[1:3])
                 png = open(os.path.join(d, 'watertemp', 't5_3.png'), 'rb').read()
                 self.assertEqual(struct.unpack('>II', png[16:24]), (400, 400))
                 px = png_rows(png, rows=1)

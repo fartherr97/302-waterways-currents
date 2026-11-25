@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: read   # (the wait below reads this run's artifact list)
   pages: write
   id-token: write
 
@@ -25,7 +26,7 @@ jobs:
     timeout-minutes: 20
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment2.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-python@v7.1.0
@@ -43,6 +44,7 @@ jobs:
       # The inlet conditions' data (inlets.json: the waves off each inlet, its tides and current,
       # the nearest buoy). Its own step, so that trouble with it never holds up the currents.
       - name: Inlet conditions
+        id: inlets
         continue-on-error: true
         timeout-minutes: 6
         run: python3 scripts/inlets.py --out site
@@ -50,12 +52,47 @@ jobs:
       # every buoy's and shore station's latest reading), for the app's Water Temp layer. Its own
       # step too: trouble with it never holds up the currents.
       - name: Water temperature
+        id: watertemp
         continue-on-error: true
         timeout-minutes: 8
         run: python3 scripts/watertemp.py --out site
+      # When one of those two doesn't go through, the copy published now stays up (the site is
+      # made from scratch and replaces the whole published one: without this, that part would be
+      # gone from the app until the next good run)
+      - name: Keep the last inlet conditions
+        if: steps.inlets.outcome == 'failure'
+        continue-on-error: true
+        run: python3 scripts/keep_last.py --out site inlets
+      - name: Keep the last water temperature
+        if: steps.watertemp.outcome == 'failure'
+        continue-on-error: true
+        run: python3 scripts/keep_last.py --out site watertemp
       - uses: actions/upload-pages-artifact@v5.0.0
         with:
           path: site
+      # The upload reports done before the run's artifact list shows it, and Publish, asking a
+      # moment later, found none ("No artifacts named github-pages") and threw away whole runs.
+      # So wait (up to 2 minutes) until the list has it; if Publish still finds none, it tries
+      # once more half a minute later.
+      - name: Wait for the artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 24); do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --jq '.artifacts[].name' 2>/dev/null | grep -qx github-pages; then
+              echo "listed after $(( (i - 1) * 5 )) s"; exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning::github-pages not listed after 2 minutes; publishing anyway"
       - name: Publish
         id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v5.0.1
+      - name: Wait before publishing again
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+      - name: Publish (second try)
+        id: deployment2
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v5.0.1
