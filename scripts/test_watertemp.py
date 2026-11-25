@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 import urllib.parse
+from unittest import mock
 import zlib
 
 import numpy as np
@@ -167,8 +168,9 @@ class Whole(unittest.TestCase):
             return nc_bytes(la, lo, sea(la, lo))
 
         real, wt.fetch = wt.fetch, fake
+        # the clock at the fixture's time: its readings are fresh then, and stay so whenever this runs
         try:
-            with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory() as d, mock.patch.object(wt.time, 'time', return_value=Stations.NOW / 1000):
                 self.assertEqual(wt.main(['--out', d, '-q']), 0)
                 m = json.load(open(os.path.join(d, 'watertemp', 'manifest.json')))
                 # water only east of 75.5°W, south of 40°N: the squares x 5–7 (78–66°W), y 0–4 (23–43°N)
